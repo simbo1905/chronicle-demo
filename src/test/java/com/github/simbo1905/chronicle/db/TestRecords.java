@@ -1,12 +1,11 @@
-package hamner.testdb;
+package com.github.simbo1905.chronicle.db;
 
 
 import java.io.File;
 import java.util.Date;
 
-import com.github.simbo1905.chronicle.db.RecordReader;
-import com.github.simbo1905.chronicle.db.RecordWriter;
-import com.github.simbo1905.chronicle.db.RecordsFile;
+import org.junit.Test;
+
 
 public class TestRecords {
 
@@ -14,7 +13,8 @@ public class TestRecords {
 		System.out.println(s);
 	}
 
-	public static void main(String[] args) throws Exception {
+	@Test
+	public void originalTest() throws Exception {
 
 		File db = new File("sampleFile.records");
 		if( db.exists() ){

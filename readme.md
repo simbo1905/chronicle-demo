@@ -1,6 +1,16 @@
 
 #### Chronicle Demo
 
+## Plan
+
+Write out the scenarios which cover the code as junits. 
+
+Instrument the write to file to find the stack paths. Write a test which bales out at the crash paths. 
+
+Add more bookwork to make it crash proof and recover. 
+
+Teleport the index and headers to a second jvm using chronicle and so that there is master and slave and run sync on slave. 
+
 ## Write Up
 
 This demo app is ...

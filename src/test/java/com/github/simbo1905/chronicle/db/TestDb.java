@@ -39,6 +39,11 @@ public class TestDb {
 				}
 			}
 		}
+
+		@Override
+		public void onObjectWritten(Object rw1) {
+			// noop
+		}
 	}
 
 	private static final class CrashAtWriteCallback implements WriteCallback {
@@ -54,6 +59,13 @@ public class TestDb {
 			if( crashAtIndex == calls++){
 				throw new IOException("simulated crash at call index: "+crashAtIndex);
 			}
+		}
+
+		List<Object> written = new ArrayList<Object>();
+		
+		@Override
+		public void onObjectWritten(Object rw1) {
+			written.add(rw1);
 		}
 	}
 
@@ -215,9 +227,7 @@ public class TestDb {
 		WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
 
 		List<UUID> uuids = createUuid(2);
-		UUID uuid0 = uuids.get(0);
-		UUID uuid1 = uuids.get(1);
-		
+
 		final List<String> localFileNames = new ArrayList<String>();
 		final String recordingFile = fileName("record");
 		localFileNames.add(recordingFile);
@@ -225,28 +235,18 @@ public class TestDb {
 		
 		for(int index = 0; index < writeStacks.size(); index++){
 			final List<String> stack = writeStacks.get(index);
-			final WriteCallback crashAt = new CrashAtWriteCallback(index);
+			final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
 			final String localFileName = fileName("crash"+index);
 			localFileNames.add(localFileName);
 			try { 
 				interceptedInsertTwoRecord(crashAt, localFileName,uuids);
 			} catch( IOException ioe ) {
 				try {
+					int expectedWrites = crashAt.written.size();
 					RecordsFile possiblyCorruptedFile = new RecordsFile(localFileName, "r");
 					int count = possiblyCorruptedFile.getNumRecords();
-					if( count > 0 ){
-						{
-							RecordReader rr = possiblyCorruptedFile.readRecord(uuid0.toString());
-							UUID uuidDb = (UUID) rr.readObject();
-							Assert.assertThat("should not exist but what does it look like?", uuidDb, is(uuid0));
-							Assert.assertThat(String.format("crash site %s found record %s at %s",index, uuidDb, stackToString(stack)), count,is(0));
-						}
-						{
-							RecordReader rr = possiblyCorruptedFile.readRecord(uuid1.toString());
-							UUID uuidDb = (UUID) rr.readObject();
-							Assert.assertThat("should not exist but what does it look like?", uuidDb, is(uuid1));
-							Assert.assertThat(String.format("crash site %s found record %s at %s",index, uuidDb, stackToString(stack)), count,is(0));
-						}
+					if( count != expectedWrites ){
+						Assert.assertTrue(String.format("expected %s but got %s", expectedWrites, count),false);
 					}
 				} catch (Exception e ){
 					removeFiles(localFileNames);
@@ -257,8 +257,6 @@ public class TestDb {
 		}
 		removeFiles(localFileNames);		
 	}
-	
-	
 	
 	private void removeFiles(List<String> localFileNames) {
 		for( String file : localFileNames ){
@@ -303,7 +301,7 @@ public class TestDb {
 			throws IOException, RecordsFileException, OptionalDataException,
 			ClassNotFoundException {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new RecordsFileSimulatesDiskFailures(newFileName, initialSize, wc);
 		Object uuid0 = uuids.get(0);
 		RecordWriter rw0 = new RecordWriter(uuid0.toString());
 		rw0.writeObject(uuid0);
@@ -313,7 +311,9 @@ public class TestDb {
 
 		// when
 		this.recordsFile.insertRecord(rw0);
+		wc.onObjectWritten(uuid0);
 		this.recordsFile.insertRecord(rw1);
+		wc.onObjectWritten(uuid1);
 	}
 
 	private List<UUID> createUuid(int count) {

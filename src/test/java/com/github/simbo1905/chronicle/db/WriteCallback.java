@@ -6,4 +6,6 @@ public interface WriteCallback {
 
 	void onWrite() throws IOException;
 
+	void onObjectWritten(Object rw1);
+
 }

@@ -232,6 +232,14 @@ public abstract class BaseRecordsFile {
 	 */
 	public synchronized void insertRecord(RecordWriter rw)
 			throws RecordsFileException, IOException {
+		insertRecord0(rw);
+	}
+
+	/**
+	 * this method exposes more to the caller for junit testing
+	 */
+	synchronized RecordHeader insertRecord0(RecordWriter rw)
+			throws RecordsFileException, IOException {
 		String key = rw.getKey();
 		if (recordExists(key)) {
 			throw new RecordsFileException("Key exists: " + key);
@@ -240,8 +248,9 @@ public abstract class BaseRecordsFile {
 		RecordHeader newRecord = allocateRecord(key, rw.getDataLength());
 		writeRecordData(newRecord, rw);
 		addEntryToIndex(key, newRecord, getNumRecords());
+		return newRecord;
 	}
-
+	
 	/**
 	 * Updates an existing record. If the new contents do not fit in the
 	 * original record, then the update is handled by inserting the data
@@ -258,7 +267,7 @@ public abstract class BaseRecordsFile {
 			writeRecordHeaderToIndex(newRecord);
 			replaceEntryInIndex(key,oldHeader,newRecord);
 		} else {
-			writeRecordData(oldHeader, rw); // crash issue here? TODO
+			writeRecordData(oldHeader, rw); 
 			writeRecordHeaderToIndex(oldHeader);
 		}
 	}
@@ -330,13 +339,13 @@ public abstract class BaseRecordsFile {
 	public synchronized void deleteRecord(String key)
 			throws RecordsFileException, IOException {
 		RecordHeader delRec = keyToRecordHeader(key);
+		RecordHeader previous = getRecordAt(delRec.dataPointer - 1);
 		int currentNumRecords = getNumRecords();
+		deleteEntryFromIndex(key, delRec, currentNumRecords);
 		if (getFileLength() == delRec.dataPointer + delRec.dataCapacity) {
 			// shrink file since this is the last record in the file
-			deleteEntryFromIndex(key, delRec, currentNumRecords);
 			setFileLength(delRec.dataPointer); 
 		} else {
-			RecordHeader previous = getRecordAt(delRec.dataPointer - 1);
 			if (previous != null) {
 				// append space of deleted record onto previous record
 				previous.dataCapacity += delRec.dataCapacity;
@@ -353,7 +362,6 @@ public abstract class BaseRecordsFile {
 				writeRecordData(secondRecord, data);
 				writeRecordHeaderToIndex(secondRecord);
 			}
-			deleteEntryFromIndex(key, delRec, currentNumRecords);
 		}
 	}
 

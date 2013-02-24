@@ -7,6 +7,13 @@ import java.nio.ByteBuffer;
 
 public class RecordHeader {
 
+	@Override
+	public String toString() {
+		return "RecordHeader [dataPointer=" + dataPointer + ", dataCount="
+				+ dataCount + ", dataCapacity=" + dataCapacity
+				+ ", indexPosition=" + indexPosition + "]";
+	}
+
 	/**
 	 * File pointer to the first byte of record data (8 bytes).
 	 */
@@ -56,6 +63,9 @@ public class RecordHeader {
 		return dataCapacity - dataCount;
 	}
 
+	/**
+	 * Read as a single operation to avoid corruption
+	 */
 	protected void read(DataInput in) throws IOException {
 		byte[] header = new byte[16];
 		in.readFully(header);

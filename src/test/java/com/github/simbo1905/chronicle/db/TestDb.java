@@ -8,7 +8,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -493,11 +495,19 @@ public class TestDb {
 		RecordWriter rw3 = new RecordWriter(uuid3.toString());
 		rw3.writeObject(uuid3);
 		
+		Map<Integer,String> keyAtIndexPosition = new HashMap<Integer,String>();
+		
 		// when
-		recordsFile.insertRecord(rw0);
-		recordsFile.insertRecord(rw1);
-		recordsFile.insertRecord(rw2);
-		recordsFile.deleteRecord(uuid1.toString());
+		RecordHeader rh0 = recordsFile.insertRecord0(rw0);
+		keyAtIndexPosition.put(rh0.indexPosition, uuid0.toString());
+		RecordHeader rh1 = recordsFile.insertRecord0(rw1);
+		keyAtIndexPosition.put(rh1.indexPosition, uuid1.toString());
+		RecordHeader rh2 = recordsFile.insertRecord0(rw2);
+		keyAtIndexPosition.put(rh2.indexPosition, uuid1.toString());
+		
+		String middle = keyAtIndexPosition.get(1);
+		
+		recordsFile.deleteRecord(middle); // TODO what is going on here!!! not touching logic it should exercise 
 		recordsFile.insertRecord(rw3);
 
 		RecordReader rr0 = recordsFile.readRecord(uuid0.toString());

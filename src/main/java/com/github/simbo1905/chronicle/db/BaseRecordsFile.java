@@ -67,6 +67,11 @@ public abstract class BaseRecordsFile {
 	 * Returns an Enumeration of the keys of all records in the database.
 	 */
 	public abstract Iterator<String> enumerateKeys();
+	
+	/**
+	 * Returns an Iterable of the keys of all records in the database.
+	 */
+	public abstract Iterable<String> keys();
 
 	/**
 	 * Returns the number or records in the database.
@@ -239,19 +244,27 @@ public abstract class BaseRecordsFile {
 
 	/**
 	 * Updates an existing record. If the new contents do not fit in the
-	 * original record, then the update is handled by deleting the old record
-	 * and adding the new.
+	 * original record, then the update is handled by inserting the data
 	 */
 	public synchronized void updateRecord(RecordWriter rw)
 			throws RecordsFileException, IOException {
-		RecordHeader header = keyToRecordHeader(rw.getKey());
-		if (rw.getDataLength() > header.dataCapacity) {
-			deleteRecord(rw.getKey()); // crash issue here? TODO
-			insertRecord(rw);
+		String key = rw.getKey();
+		RecordHeader oldHeader = keyToRecordHeader(key);
+		if (rw.getDataLength() > oldHeader.dataCapacity) {
+			RecordHeader newRecord = allocateRecord(key, rw.getDataLength());
+			newRecord.indexPosition = oldHeader.indexPosition;
+			newRecord.dataCount = oldHeader.dataCount;
+			writeRecordData(newRecord, rw);
+			writeRecordHeaderToIndex(newRecord);
+			replaceEntryInIndex(key,oldHeader,newRecord);
 		} else {
-			writeRecordData(header, rw); // crash issue here? TODO
-			writeRecordHeaderToIndex(header);
+			writeRecordData(oldHeader, rw); // crash issue here? TODO
+			writeRecordHeaderToIndex(oldHeader);
 		}
+	}
+
+	protected void replaceEntryInIndex(String key, RecordHeader header, RecordHeader newRecord) {
+		// nothing to do but lets subclasses do additional bookwork
 	}
 
 	/**
@@ -320,7 +333,8 @@ public abstract class BaseRecordsFile {
 		int currentNumRecords = getNumRecords();
 		if (getFileLength() == delRec.dataPointer + delRec.dataCapacity) {
 			// shrink file since this is the last record in the file
-			setFileLength(delRec.dataPointer);
+			deleteEntryFromIndex(key, delRec, currentNumRecords);
+			setFileLength(delRec.dataPointer); 
 		} else {
 			RecordHeader previous = getRecordAt(delRec.dataPointer - 1);
 			if (previous != null) {
@@ -339,8 +353,8 @@ public abstract class BaseRecordsFile {
 				writeRecordData(secondRecord, data);
 				writeRecordHeaderToIndex(secondRecord);
 			}
+			deleteEntryFromIndex(key, delRec, currentNumRecords);
 		}
-		deleteEntryFromIndex(key, delRec, currentNumRecords); // TODO crash
 	}
 
 	// Checks to see if there is space for and additional index entry. If

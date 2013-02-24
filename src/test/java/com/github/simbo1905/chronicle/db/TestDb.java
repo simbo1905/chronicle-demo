@@ -1,10 +1,11 @@
 package com.github.simbo1905.chronicle.db;
 
 import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.OptionalDataException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -16,8 +17,16 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests that the simple random access storage 'db' works and does not get 
+ * corrupted under write errors. 
+ */
 public class TestDb {
 	
+	/**
+	 * A utility to recored how many times file write operations are called 
+	 * and what the stack looks like for them.
+	 */
 	private static final class StackCollectingWriteCallback implements
 			WriteCallback {
 		private final List<List<String>> writeStacks;
@@ -39,13 +48,11 @@ public class TestDb {
 				}
 			}
 		}
-
-		@Override
-		public void onObjectWritten(Object rw1) {
-			// noop
-		}
 	}
 
+	/**
+	 * A untility to throw an exception at a particular write operation. 
+	 */
 	private static final class CrashAtWriteCallback implements WriteCallback {
 		final int crashAtIndex;
 		int calls = 0;
@@ -57,16 +64,10 @@ public class TestDb {
 		@Override
 		public void onWrite() throws IOException {
 			if( crashAtIndex == calls++){
-				throw new IOException("simulated crash at call index: "+crashAtIndex);
+				throw new IOException("simulated write error at call index: "+crashAtIndex);
 			}
 		}
 
-		List<Object> written = new ArrayList<Object>();
-		
-		@Override
-		public void onObjectWritten(Object rw1) {
-			written.add(rw1);
-		}
 	}
 
 	static final String TMP = System.getProperty("java.io.tmpdir");
@@ -101,6 +102,9 @@ public class TestDb {
 		} 
 	}
 
+	/**
+	 * Taken from http://www.javaworld.com/jw-01-1999/jw-01-step.html
+	 */
 	@Test
 	public void originalTest() throws Exception {
 		recordsFile = new RecordsFile(fileName, initialSize);
@@ -156,46 +160,27 @@ public class TestDb {
 	}
 	
 	@Test
-	public void testInsertOneRecordWithCrashes() throws Exception {
-		final List<List<String>> writeStacks = new ArrayList<List<String>>();
-		
-		WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
-
+	public void testInsertOneRecordWithIOExceptions() throws Exception {
 		List<UUID> uuids = createUuid(1);
-		UUID uuid = uuids.get(0);
-		
-		final List<String> localFileNames = new ArrayList<String>();
-		final String recordingFile = fileName("record");
-		localFileNames.add(recordingFile);
-		interceptedInsertOneRecord(collectsWriteStacks, recordingFile,uuids);
-		
-		for(int index = 0; index < writeStacks.size(); index++){
-			final List<String> stack = writeStacks.get(index);
-			final WriteCallback crashAt = new CrashAtWriteCallback(index);
-			final String localFileName = fileName("crash"+index);
-			localFileNames.add(localFileName);
-			try { 
-				interceptedInsertOneRecord(crashAt, localFileName,uuids);
-			} catch( IOException ioe ) {
-				try {
-					RecordsFile possiblyCorruptedFile = new RecordsFile(localFileName, "r");
-					int count = possiblyCorruptedFile.getNumRecords();
-					if( count > 0 ){
-						RecordReader rr = possiblyCorruptedFile.readRecord(uuid.toString());
-						UUID uuidDb = (UUID) rr.readObject();
-						Assert.assertThat("should not exist but what does it look like?", uuidDb, is(uuid));
-						Assert.assertThat(String.format("crash site %s found record %s at %s",index, uuidDb, stackToString(stack)), count,is(0));
-					}
-				} catch (Exception e ){
-					removeFiles(localFileNames);
-					final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
-					throw new RuntimeException(msg,e);
-				}
-			}
-		}
-		removeFiles(localFileNames);		
-	}
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
 
+					LOGGER.info(String.format("writing to: "+fileName));
+					
+					// given
+					recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+					
+					Object uuid = uuids.get(0);
+					RecordWriter rw = new RecordWriter(uuid.toString());
+					rw.writeObject(uuid);
+					
+					// when
+					recordsFile.insertRecord(rw);
+				}			
+		}, uuids);
+	}
 	
 	@Test
 	public void testInsertTwoRecords() throws Exception {
@@ -221,41 +206,518 @@ public class TestDb {
 	}
 	
 	@Test
-	public void testInsertTwoRecordsWithCrashes() throws Exception {
-		final List<List<String>> writeStacks = new ArrayList<List<String>>();
-		
-		WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
+	public void testInsertTwoRecordsWithIOExceptions() throws Exception {
+		List<UUID> uuids = createUuid(2);
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+					// given
+					recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+					Object uuid0 = uuids.get(0);
+					RecordWriter rw0 = new RecordWriter(uuid0.toString());
+					rw0.writeObject(uuid0);
+					Object uuid1 = uuids.get(1);
+					RecordWriter rw1 = new RecordWriter(uuid1.toString());
+					rw1.writeObject(uuid1);
 
+					// when
+					recordsFile.insertRecord(rw0);
+					recordsFile.insertRecord(rw1);
+				}			
+		}, uuids);
+	}
+
+	@Test
+	public void testInsertThenDeleteRecord() throws Exception {
+		// given
+		recordsFile = new RecordsFile(fileName, initialSize);
+		List<UUID> uuids = createUuid(1);
+		Object uuid0 = uuids.get(0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString());
+		rw0.writeObject(uuid0);
+
+		// when
+		this.recordsFile.insertRecord(rw0);
+		this.recordsFile.deleteRecord(uuid0.toString());
+		try { 
+			this.recordsFile.readRecord(uuid0.toString());
+			Assert.fail();
+		} catch( RecordsFileException e){
+			// expected
+		}
+	}
+	
+	@Test
+	public void testInsertThenDeleteRecordWithIOExceptions() throws Exception {
+		List<UUID> uuids = createUuid(1);
+
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+					// given
+					recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+					Object uuid = uuids.get(0);
+					RecordWriter rw = new RecordWriter(uuid.toString());
+					rw.writeObject(uuid);
+					
+					// when
+					recordsFile.insertRecord(rw);
+					recordsFile.deleteRecord(uuid.toString());
+				}			
+		}, uuids);
+	}
+	
+	@Test
+	public void testInsertTwoThenDeleteTwoRecords() throws Exception {
+		// given
+		recordsFile = new RecordsFile(fileName, initialSize);
+		List<UUID> uuids = createUuid(2);
+		Object uuid0 = uuids.get(0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString());
+		rw0.writeObject(uuid0);
+		Object uuid1 = uuids.get(1);
+		RecordWriter rw1 = new RecordWriter(uuid1.toString());
+		rw1.writeObject(uuid1);
+
+		// when
+		this.recordsFile.insertRecord(rw0);
+		this.recordsFile.insertRecord(rw1);
+		this.recordsFile.deleteRecord(uuid0.toString());
+		this.recordsFile.deleteRecord(uuid1.toString());
+		try { 
+			this.recordsFile.readRecord(uuid0.toString());
+			Assert.fail();
+		} catch( RecordsFileException e){
+			// expected
+		}
+		try { 
+			this.recordsFile.readRecord(uuid1.toString());
+			Assert.fail();
+		} catch( RecordsFileException e){
+			// expected
+		}
+	}
+	
+	@Test
+	public void testInsertTwoThenDeleteTwoRecordsWithIOExceptions() throws Exception {
 		List<UUID> uuids = createUuid(2);
 
-		final List<String> localFileNames = new ArrayList<String>();
-		final String recordingFile = fileName("record");
-		localFileNames.add(recordingFile);
-		interceptedInsertTwoRecord(collectsWriteStacks, recordingFile,uuids);
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+				// given
+				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+				Object uuid0 = uuids.get(0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString());
+				rw0.writeObject(uuid0);
+				Object uuid1 = uuids.get(1);
+				RecordWriter rw1 = new RecordWriter(uuid1.toString());
+				rw1.writeObject(uuid1);
+
+				// when
+				recordsFile.insertRecord(rw0);
+				recordsFile.insertRecord(rw1);
+				recordsFile.deleteRecord(uuid0.toString());
+				recordsFile.deleteRecord(uuid1.toString());
+			}			
+		}, uuids);
+	}
+	
+	@Test
+	public void testInsertTwoDeleteFirstInsertOne() throws Exception {
+		// given
+		recordsFile = new RecordsFile(fileName, initialSize);
+		List<UUID> uuids = createUuid(3);
 		
-		for(int index = 0; index < writeStacks.size(); index++){
-			final List<String> stack = writeStacks.get(index);
-			final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
-			final String localFileName = fileName("crash"+index);
-			localFileNames.add(localFileName);
-			try { 
-				interceptedInsertTwoRecord(crashAt, localFileName,uuids);
-			} catch( IOException ioe ) {
-				try {
-					int expectedWrites = crashAt.written.size();
-					RecordsFile possiblyCorruptedFile = new RecordsFile(localFileName, "r");
-					int count = possiblyCorruptedFile.getNumRecords();
-					if( count != expectedWrites ){
-						Assert.assertTrue(String.format("expected %s but got %s", expectedWrites, count),false);
-					}
-				} catch (Exception e ){
-					removeFiles(localFileNames);
-					final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
-					throw new RuntimeException(msg,e);
-				}
-			}
+		Object uuid0 = uuids.get(0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString());
+		rw0.writeObject(uuid0);
+		
+		Object uuid1 = uuids.get(1);
+		RecordWriter rw1 = new RecordWriter(uuid1.toString());
+		rw1.writeObject(uuid1);
+
+		Object uuid2 = uuids.get(2);
+		RecordWriter rw2 = new RecordWriter(uuid2.toString());
+		rw2.writeObject(uuid2);
+
+		// when
+		recordsFile.insertRecord(rw0);
+		recordsFile.insertRecord(rw1);
+		recordsFile.deleteRecord(uuid0.toString());
+		recordsFile.insertRecord(rw2);
+		RecordReader rr1 = recordsFile.readRecord(uuid1.toString());
+		RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+		
+		// then
+		Assert.assertThat((UUID)rr1.readObject(), is(uuid1));
+		Assert.assertThat((UUID)rr2.readObject(), is(uuid2));
+		try { 
+			recordsFile.readRecord(uuid0.toString());
+			Assert.fail();
+		} catch( RecordsFileException e){
+			// expected
 		}
-		removeFiles(localFileNames);		
+	}
+	
+	@Test
+	public void testInsertTwoDeleteFirstInsertOneWithIOExceptions() throws Exception {
+		List<UUID> uuids = createUuid(3);
+
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+				// given
+				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+				Object uuid0 = uuids.get(0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString());
+				rw0.writeObject(uuid0);
+				
+				Object uuid1 = uuids.get(1);
+				RecordWriter rw1 = new RecordWriter(uuid1.toString());
+				rw1.writeObject(uuid1);
+
+				Object uuid2 = uuids.get(2);
+				RecordWriter rw2 = new RecordWriter(uuid2.toString());
+				rw2.writeObject(uuid2);
+
+				// when
+				recordsFile.insertRecord(rw0);
+				recordsFile.insertRecord(rw1);
+				recordsFile.deleteRecord(uuid1.toString());
+				recordsFile.insertRecord(rw2);
+				RecordReader rr = recordsFile.readRecord(uuid0.toString());
+				rr.readObject();
+				RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+				rr2.readObject();
+			}			
+		}, uuids);	
+	}
+	
+	@Test
+	public void testInsertTwoDeleteSecondInsertOne() throws Exception {
+		// given
+		recordsFile = new RecordsFile(fileName, initialSize);
+		List<UUID> uuids = createUuid(3);
+		
+		Object uuid0 = uuids.get(0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString());
+		rw0.writeObject(uuid0);
+		
+		Object uuid1 = uuids.get(1);
+		RecordWriter rw1 = new RecordWriter(uuid1.toString());
+		rw1.writeObject(uuid1);
+
+		Object uuid2 = uuids.get(2);
+		RecordWriter rw2 = new RecordWriter(uuid2.toString());
+		rw2.writeObject(uuid2);
+
+		// when
+		recordsFile.insertRecord(rw0);
+		recordsFile.insertRecord(rw1);
+		recordsFile.deleteRecord(uuid1.toString());
+		recordsFile.insertRecord(rw2);
+		RecordReader rr = recordsFile.readRecord(uuid0.toString());
+		RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+		
+		// then
+		Assert.assertThat((UUID)rr.readObject(), is(uuid0));
+		Assert.assertThat((UUID)rr2.readObject(), is(uuid2));
+		try { 
+			recordsFile.readRecord(uuid1.toString());
+			Assert.fail();
+		} catch( RecordsFileException e){
+			// expected
+		}
+	}
+	
+	@Test
+	public void testInsertTwoDeleteSecondInsertOneWithIOExceptions() throws Exception {
+		List<UUID> uuids = createUuid(3);
+
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+				// given
+				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+				
+				Object uuid0 = uuids.get(0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString());
+				rw0.writeObject(uuid0);
+				
+				Object uuid1 = uuids.get(1);
+				RecordWriter rw1 = new RecordWriter(uuid1.toString());
+				rw1.writeObject(uuid1);
+
+				Object uuid2 = uuids.get(2);
+				RecordWriter rw2 = new RecordWriter(uuid2.toString());
+				rw2.writeObject(uuid2);
+
+				// when
+				recordsFile.insertRecord(rw0);
+				recordsFile.insertRecord(rw1);
+				recordsFile.deleteRecord(uuid1.toString());
+				recordsFile.insertRecord(rw2);
+				RecordReader rr = recordsFile.readRecord(uuid0.toString());
+				rr.readObject();
+				RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+				rr2.readObject();
+			}			
+		}, uuids);
+	}
+	
+	@Test
+	public void testInsertThreeDeleteSecondInsertOne() throws Exception {
+		// given
+		List<UUID> uuids = createUuid(4);
+		recordsFile = new RecordsFile(fileName, initialSize);
+		
+		Object uuid0 = uuids.get(0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString());
+		rw0.writeObject(uuid0);
+		
+		Object uuid1 = uuids.get(1);
+		RecordWriter rw1 = new RecordWriter(uuid1.toString());
+		rw1.writeObject(uuid1);
+
+		Object uuid2 = uuids.get(2);
+		RecordWriter rw2 = new RecordWriter(uuid2.toString());
+		rw2.writeObject(uuid2);
+
+		Object uuid3 = uuids.get(3);
+		RecordWriter rw3 = new RecordWriter(uuid3.toString());
+		rw3.writeObject(uuid3);
+		
+		// when
+		recordsFile.insertRecord(rw0);
+		recordsFile.insertRecord(rw1);
+		recordsFile.insertRecord(rw2);
+		recordsFile.deleteRecord(uuid1.toString());
+		recordsFile.insertRecord(rw3);
+
+		RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+		RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+		RecordReader rr3 = recordsFile.readRecord(uuid3.toString());
+		
+		// then
+		Assert.assertThat((UUID)rr0.readObject(), is(uuid0));
+		Assert.assertThat((UUID)rr2.readObject(), is(uuid2));
+		Assert.assertThat((UUID)rr3.readObject(), is(uuid3));
+		try { 
+			recordsFile.readRecord(uuid1.toString());
+			Assert.fail();
+		} catch( RecordsFileException e){
+			// expected
+		}
+	}
+	
+	@Test
+	public void testInsertThreeDeleteSecondInsertOneWithIOExceptions() throws Exception {
+		List<UUID> uuids = createUuid(4);
+
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+				
+				Object uuid0 = uuids.get(0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString());
+				rw0.writeObject(uuid0);
+				
+				Object uuid1 = uuids.get(1);
+				RecordWriter rw1 = new RecordWriter(uuid1.toString());
+				rw1.writeObject(uuid1);
+
+				Object uuid2 = uuids.get(2);
+				RecordWriter rw2 = new RecordWriter(uuid2.toString());
+				rw2.writeObject(uuid2);
+
+				Object uuid3 = uuids.get(3);
+				RecordWriter rw3 = new RecordWriter(uuid3.toString());
+				rw3.writeObject(uuid3);
+				
+				// when
+				recordsFile.insertRecord(rw0);
+				recordsFile.insertRecord(rw1);
+				recordsFile.insertRecord(rw2);
+				recordsFile.deleteRecord(uuid1.toString());
+				recordsFile.insertRecord(rw3);
+
+				RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+				rr0.readObject();
+				RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+				rr2.readObject();
+				RecordReader rr3 = recordsFile.readRecord(uuid3.toString());
+				rr3.readObject();
+			}			
+		}, uuids);
+
+	}
+	
+	@Test
+	public void testUpdateOneRecord() throws Exception {
+		// given
+		List<UUID> uuids = createUuid(2);
+		recordsFile = new RecordsFile(fileName, initialSize);
+		
+		Object uuid0 = uuids.get(0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString());
+		rw0.writeObject(uuid0);
+		Object uuidUpdated = uuids.get(1);
+		
+		// when
+		recordsFile.insertRecord(rw0);
+		rw0.clear();
+		rw0.writeObject(uuidUpdated);
+		recordsFile.updateRecord(rw0);
+		
+		RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+		
+		// then
+		Assert.assertThat((UUID)rr0.readObject(), is(uuidUpdated));
+	}
+	
+	@Test
+	public void testUpdateOneRecordWithIOExceptions() throws Exception {
+		List<UUID> uuids = createUuid(2);
+
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+				
+				Object uuid0 = uuids.get(0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString());
+				rw0.writeObject(uuid0);
+				Object uuidUpdated = uuids.get(1);
+				
+				// when
+				recordsFile.insertRecord(rw0);
+				rw0.clear();
+				rw0.writeObject(uuidUpdated);
+				recordsFile.updateRecord(rw0);
+				
+				RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+				rr0.readObject();
+			}			
+		}, uuids);
+	}
+
+	@Test
+	public void testUpdateExpandOneRecord() throws Exception {
+		// given
+		recordsFile = new RecordsFile(fileName, initialSize);
+		
+		UUID uuid0 = UUID.randomUUID();
+		UUID uuid1 = UUID.randomUUID();
+		UUID uuid2 = UUID.randomUUID();
+		String oldPayload = uuid1.toString();
+		String newPayload = uuid1.toString()+uuid2.toString();
+		
+		RecordWriter rw0 = new RecordWriter(uuid0.toString());
+		rw0.writeObject(oldPayload);
+		
+		// when
+		recordsFile.insertRecord(rw0);
+		rw0.clear();
+		rw0.writeObject(newPayload);
+		recordsFile.updateRecord(rw0);
+		
+		RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+		
+		// then
+		Assert.assertThat((String)rr0.readObject(), is(newPayload));
+	}
+	
+	@Test
+	public void testUpdateExpandOneRecordWithIOExceptions() throws Exception {
+		List<UUID> uuids = createUuid(3);
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+				
+				UUID uuid0 = UUID.randomUUID();
+				UUID uuid1 = UUID.randomUUID();
+				UUID uuid2 = UUID.randomUUID();
+				String oldPayload = uuid1.toString();
+				String newPayload = uuid1.toString()+uuid2.toString();
+				
+				RecordWriter rw0 = new RecordWriter(uuid0.toString());
+				rw0.writeObject(oldPayload);
+				
+				// when
+				recordsFile.insertRecord(rw0);
+				rw0.clear();
+				rw0.writeObject(newPayload);
+				recordsFile.updateRecord(rw0);
+				
+				RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+				
+				rr0.readObject();
+			}			
+		}, uuids);
+	}
+	
+	@Test
+	public void testUpdateShrinkOneRecord() throws Exception {
+		// given
+		recordsFile = new RecordsFile(fileName, initialSize);
+		
+		UUID uuid0 = UUID.randomUUID();
+		UUID uuid1 = UUID.randomUUID();
+		UUID uuid2 = UUID.randomUUID();
+		
+		RecordWriter rw0 = new RecordWriter(uuid0.toString());
+		rw0.writeObject(uuid0);
+		rw0.writeObject(uuid1);
+		
+		// when
+		recordsFile.insertRecord(rw0);
+		rw0.clear();
+		rw0.writeObject(uuid2);
+		recordsFile.updateRecord(rw0);
+		
+		RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+		
+		// then
+		Assert.assertThat((UUID)rr0.readObject(), is(uuid2));
+	}
+	
+	@Test
+	public void testUpdateShrinkOneRecordWithIOExceptions() throws Exception {
+		List<UUID> uuids = createUuid(3);
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+				UUID uuid0 = uuids.get(0);
+				UUID uuid1 = uuids.get(1);
+				UUID uuid2 = uuids.get(2);
+				
+				RecordWriter rw0 = new RecordWriter(uuid0.toString());
+				rw0.writeObject(uuid0);
+				rw0.writeObject(uuid1);
+				
+				// when
+				recordsFile.insertRecord(rw0);
+				rw0.clear();
+				rw0.writeObject(uuid2);
+				recordsFile.updateRecord(rw0);
+				
+				RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+				rr0.readObject();
+			}			
+		}, uuids);
 	}
 	
 	private void removeFiles(List<String> localFileNames) {
@@ -281,41 +743,11 @@ public class TestDb {
 		return fileName;
 	}
 
-	private void interceptedInsertOneRecord(WriteCallback wc, String newFileName, List<UUID> uuids)
-			throws IOException, RecordsFileException, OptionalDataException,
-			ClassNotFoundException {
-		LOGGER.info(String.format("writing to: "+newFileName));
-		
-		// given
-		recordsFile = new RecordsFileSimulatesDiskFailures(newFileName, initialSize, wc);
-		
-		Object uuid = uuids.get(0);
-		RecordWriter rw = new RecordWriter(uuid.toString());
-		rw.writeObject(uuid);
-		
-		// when
-		this.recordsFile.insertRecord(rw);
+	static interface InterceptedTestOperations {
+		void performTestOperations(WriteCallback wc, String fileName, List<UUID> uuids) throws Exception;
 	}
 	
-	private void interceptedInsertTwoRecord(WriteCallback wc, String newFileName, List<UUID> uuids)
-			throws IOException, RecordsFileException, OptionalDataException,
-			ClassNotFoundException {
-		// given
-		recordsFile = new RecordsFileSimulatesDiskFailures(newFileName, initialSize, wc);
-		Object uuid0 = uuids.get(0);
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
-		rw0.writeObject(uuid0);
-		Object uuid1 = uuids.get(1);
-		RecordWriter rw1 = new RecordWriter(uuid1.toString());
-		rw1.writeObject(uuid1);
-
-		// when
-		this.recordsFile.insertRecord(rw0);
-		wc.onObjectWritten(uuid0);
-		this.recordsFile.insertRecord(rw1);
-		wc.onObjectWritten(uuid1);
-	}
-
+	
 	private List<UUID> createUuid(int count) {
 		List<UUID> uuids = new ArrayList<UUID>(count);
 		for( int index = 0; index < count; index++ ) {
@@ -323,4 +755,44 @@ public class TestDb {
 		}
 		return uuids;
 	}
+
+	void verifyWorkWithIOExceptions(InterceptedTestOperations interceptedOperations, List<UUID> uuids) throws Exception {
+		final List<List<String>> writeStacks = new ArrayList<List<String>>();
+		
+		WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
+
+		final List<String> localFileNames = new ArrayList<String>();
+		final String recordingFile = fileName("record");
+		localFileNames.add(recordingFile);
+		interceptedOperations.performTestOperations(collectsWriteStacks, recordingFile,uuids);
+		
+		for(int index = 0; index < writeStacks.size(); index++){
+			final List<String> stack = writeStacks.get(index);
+			final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
+			final String localFileName = fileName("crash"+index);
+			localFileNames.add(localFileName);
+			try { 
+				interceptedOperations.performTestOperations(crashAt, localFileName,uuids);
+			} catch( Exception ioe ) {
+				try {
+					RecordsFile possiblyCorruptedFile = new RecordsFile(localFileName, "r");
+					int count = possiblyCorruptedFile.getNumRecords();
+					for( String k : possiblyCorruptedFile.keys() ){
+						RecordReader r = possiblyCorruptedFile.readRecord(k);
+						Object o = r.readObject();
+						assertNotNull(o);
+						count--;
+					}
+					assertThat(count, is(0));
+					removeFiles(localFileNames);
+				} catch (Exception e ){
+					removeFiles(localFileNames);
+					final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
+					throw new RuntimeException(msg,e);
+				}
+			}
+		}
+		removeFiles(localFileNames);		
+	}
+
 }

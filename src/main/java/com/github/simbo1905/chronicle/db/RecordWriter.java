@@ -50,6 +50,11 @@ public class RecordWriter {
     out.writeTo(str);
   }
 
+	public void clear() throws IOException {
+		out.reset();
+		objOut = new ObjectOutputStream(out);
+	}
+
 }
 
 

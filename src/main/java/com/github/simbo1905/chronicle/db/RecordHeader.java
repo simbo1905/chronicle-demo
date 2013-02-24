@@ -8,6 +8,37 @@ import java.nio.ByteBuffer;
 public class RecordHeader {
 
 	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + dataCapacity;
+		result = prime * result + dataCount;
+		result = prime * result + (int) (dataPointer ^ (dataPointer >>> 32));
+		result = prime * result + indexPosition;
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		RecordHeader other = (RecordHeader) obj;
+		if (dataCapacity != other.dataCapacity)
+			return false;
+		if (dataCount != other.dataCount)
+			return false;
+		if (dataPointer != other.dataPointer)
+			return false;
+		if (indexPosition != other.indexPosition)
+			return false;
+		return true;
+	}
+
+	@Override
 	public String toString() {
 		return "RecordHeader [dataPointer=" + dataPointer + ", dataCount="
 				+ dataCount + ", dataCapacity=" + dataCapacity

@@ -8,9 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -495,31 +493,26 @@ public class TestDb {
 		RecordWriter rw3 = new RecordWriter(uuid3.toString());
 		rw3.writeObject(uuid3);
 		
-		Map<Integer,String> keyAtIndexPosition = new HashMap<Integer,String>();
-		
 		// when
+		@SuppressWarnings("unused")
 		RecordHeader rh0 = recordsFile.insertRecord0(rw0);
-		keyAtIndexPosition.put(rh0.indexPosition, uuid0.toString());
+		@SuppressWarnings("unused")
 		RecordHeader rh1 = recordsFile.insertRecord0(rw1);
-		keyAtIndexPosition.put(rh1.indexPosition, uuid1.toString());
+		@SuppressWarnings("unused")
 		RecordHeader rh2 = recordsFile.insertRecord0(rw2);
-		keyAtIndexPosition.put(rh2.indexPosition, uuid1.toString());
-		
-		String middle = keyAtIndexPosition.get(1);
-		
-		recordsFile.deleteRecord(middle); // TODO what is going on here!!! not touching logic it should exercise 
+		recordsFile.deleteRecord(uuid0.toString()); // first is shifted to end to expand index and end up as middle in data section
 		recordsFile.insertRecord(rw3);
 
-		RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+		RecordReader rr0 = recordsFile.readRecord(uuid1.toString());
 		RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
 		RecordReader rr3 = recordsFile.readRecord(uuid3.toString());
 		
 		// then
-		Assert.assertThat((UUID)rr0.readObject(), is(uuid0));
+		Assert.assertThat((UUID)rr0.readObject(), is(uuid1));
 		Assert.assertThat((UUID)rr2.readObject(), is(uuid2));
 		Assert.assertThat((UUID)rr3.readObject(), is(uuid3));
 		try { 
-			recordsFile.readRecord(uuid1.toString());
+			recordsFile.readRecord(uuid0.toString());
 			Assert.fail();
 		} catch( RecordsFileException e){
 			// expected
@@ -556,10 +549,10 @@ public class TestDb {
 				recordsFile.insertRecord(rw0);
 				recordsFile.insertRecord(rw1);
 				recordsFile.insertRecord(rw2);
-				recordsFile.deleteRecord(uuid1.toString());
+				recordsFile.deleteRecord(uuid0.toString()); // first is shifted to end to expand index and end up as middle in data section
 				recordsFile.insertRecord(rw3);
 
-				RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+				RecordReader rr0 = recordsFile.readRecord(uuid1.toString());
 				rr0.readObject();
 				RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
 				rr2.readObject();

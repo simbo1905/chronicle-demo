@@ -347,7 +347,7 @@ public class TestDb {
 		// when
 		recordsFile.insertRecord(rw0);
 		recordsFile.insertRecord(rw1);
-		recordsFile.deleteRecord(uuid0.toString());
+		recordsFile.deleteRecord(uuid0.toString()); // actually some re-ording on second insert so this is end of file
 		recordsFile.insertRecord(rw2);
 		RecordReader rr1 = recordsFile.readRecord(uuid1.toString());
 		RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
@@ -388,7 +388,7 @@ public class TestDb {
 				// when
 				recordsFile.insertRecord(rw0);
 				recordsFile.insertRecord(rw1);
-				recordsFile.deleteRecord(uuid1.toString());
+				recordsFile.deleteRecord(uuid1.toString()); // actually some re-ordering on second insert so this is end of file
 				recordsFile.insertRecord(rw2);
 				RecordReader rr = recordsFile.readRecord(uuid0.toString());
 				rr.readObject();
@@ -419,7 +419,7 @@ public class TestDb {
 		// when
 		recordsFile.insertRecord(rw0);
 		recordsFile.insertRecord(rw1);
-		recordsFile.deleteRecord(uuid1.toString());
+		recordsFile.deleteRecord(uuid1.toString()); // actually some re-ordering on second insert so this earlier in file 
 		recordsFile.insertRecord(rw2);
 		RecordReader rr = recordsFile.readRecord(uuid0.toString());
 		RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
@@ -461,7 +461,7 @@ public class TestDb {
 				// when
 				recordsFile.insertRecord(rw0);
 				recordsFile.insertRecord(rw1);
-				recordsFile.deleteRecord(uuid1.toString());
+				recordsFile.deleteRecord(uuid1.toString());// actually some re-ordering on second insert so this earlier in file 
 				recordsFile.insertRecord(rw2);
 				RecordReader rr = recordsFile.readRecord(uuid0.toString());
 				rr.readObject();

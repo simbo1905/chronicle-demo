@@ -3,13 +3,11 @@
 
 ## Plan
 
-Write out the scenarios which cover the code as junits. 
-
-Instrument the write to file to find the stack paths. Write a test which bales out at the crash paths. 
-
-Add more bookwork to make it crash proof and recover. 
-
 Teleport the index and headers to a second jvm using chronicle and so that there is master and slave and run sync on slave. 
+
+Verify the random access file store; instrument the file access to and write tests which throw exceptions and prove it is crash proof. 
+
+Add a recover and compact method. Speed up the binary writes. 
 
 ## Write Up
 
@@ -36,6 +34,8 @@ Note that the code assumes ...
 ToDo
 	
 ## Inspiration 
+
+http://www.javaworld.com/jw-01-1999/jw-01-step.html?page=1
 
 ToDo
 

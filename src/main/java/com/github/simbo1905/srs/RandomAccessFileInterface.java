@@ -1,4 +1,4 @@
-package com.github.simbo1905.chronicle.db;
+package com.github.simbo1905.srs;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -9,7 +9,7 @@ import java.nio.channels.FileChannel;
 /**
  * easier to mock final native class by wrapping it in an interface
  */
-public interface IRandomAccessFile extends DataInput, DataOutput {
+public interface RandomAccessFileInterface extends DataInput, DataOutput {
 
 	public abstract int hashCode();
 

@@ -1,11 +1,13 @@
-package com.github.simbo1905.chronicle.db;
+package com.github.simbo1905.srs;
 
-import java.io.*;
-import java.util.*;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 
-public abstract class BaseRecordsFile {
+public abstract class BaseRecordsStore {
 
-	/*default*/ IRandomAccessFile file;
+	/*default*/ RandomAccessFileInterface file;
 
 	// Current file pointer to the start of the record data.
 	protected long dataStartPtr;
@@ -34,7 +36,7 @@ public abstract class BaseRecordsFile {
 	 * Creates a new database file, initializing the appropriate headers. Enough
 	 * space is allocated in the index for the specified initial size.
 	 */
-	protected BaseRecordsFile(String dbPath, int initialSize)
+	protected BaseRecordsStore(String dbPath, int initialSize)
 			throws IOException, RecordsFileException {
 		File f = new File(dbPath);
 		if (f.exists()) {
@@ -53,7 +55,7 @@ public abstract class BaseRecordsFile {
 	 * accessFlags parameter can be "r" or "rw" -- as defined in
 	 * RandomAccessFile.
 	 */
-	protected BaseRecordsFile(String dbPath, String accessFlags)
+	protected BaseRecordsStore(String dbPath, String accessFlags)
 			throws IOException, RecordsFileException {
 		File f = new File(dbPath);
 		if (!f.exists()) {
@@ -62,11 +64,6 @@ public abstract class BaseRecordsFile {
 		this.file = new DirectRandomAccessFile(new RandomAccessFile(f, accessFlags));
 		dataStartPtr = readDataStartHeader();
 	}
-
-	/**
-	 * Returns an Enumeration of the keys of all records in the database.
-	 */
-	public abstract Iterator<String> enumerateKeys();
 	
 	/**
 	 * Returns an Iterable of the keys of all records in the database.
@@ -352,15 +349,28 @@ public abstract class BaseRecordsFile {
 				writeRecordHeaderToIndex(previous);
 			} else {
 				// target record is first in the file and is deleted by adding
-				// its space to
-				// the second record.
+				// its space to the second record.
 				RecordHeader secondRecord = getRecordAt(delRec.dataPointer
 						+ (long) delRec.dataCapacity);
 				byte[] data = readRecordData(secondRecord);
+				
+				long fp = getFileLength();
+				if(  secondRecord.dataCount > delRec.dataCount ){
+					// wont fit entirely in slot so risk of corrupting itself
+					// make a backup at the end of the file first
+					setFileLength(fp + secondRecord.dataCount);
+					RecordHeader tempRecord = new RecordHeader(fp, secondRecord.dataCount);
+					writeRecordData(tempRecord, data);
+					writeRecordHeaderToIndex(tempRecord);
+				}
 				secondRecord.dataPointer = delRec.dataPointer;
 				secondRecord.dataCapacity += delRec.dataCapacity;
 				writeRecordData(secondRecord, data);
 				writeRecordHeaderToIndex(secondRecord);
+				if(  secondRecord.dataCount > delRec.dataCount ){
+					// delete backup at the end of the file
+					setFileLength(fp + secondRecord.dataCount);
+				}
 			}
 		}
 	}

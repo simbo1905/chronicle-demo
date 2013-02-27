@@ -1,4 +1,4 @@
-package com.github.simbo1905.chronicle.db;
+package com.github.simbo1905.srs;
 
 public class RecordsFileException extends Exception {
 

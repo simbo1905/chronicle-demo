@@ -1,4 +1,4 @@
-package com.github.simbo1905.chronicle.db;
+package com.github.simbo1905.srs;
 
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertNotNull;
@@ -17,11 +17,17 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 
+import com.github.simbo1905.srs.RecordHeader;
+import com.github.simbo1905.srs.RecordReader;
+import com.github.simbo1905.srs.RecordWriter;
+import com.github.simbo1905.srs.RecordsFile;
+import com.github.simbo1905.srs.RecordsFileException;
+
 /**
  * Tests that the simple random access storage 'db' works and does not get 
  * corrupted under write errors. 
  */
-public class TestDb {
+public class SimpleRecordsStoreTests {
 	
 	/**
 	 * A utility to recored how many times file write operations are called 
@@ -72,12 +78,12 @@ public class TestDb {
 
 	static final String TMP = System.getProperty("java.io.tmpdir");
 
-	private final static Logger LOGGER = Logger.getLogger(TestDb.class.getName()); 
+	private final static Logger LOGGER = Logger.getLogger(SimpleRecordsStoreTests.class.getName()); 
 	
 	String fileName;
 	int initialSize;
 	
-	public TestDb() {
+	public SimpleRecordsStoreTests() {
 		LOGGER.setLevel(Level.ALL);
 		init(TMP+"junit.records",0);
 	}
@@ -720,6 +726,61 @@ public class TestDb {
 				RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
 				rr0.readObject();
 			}			
+		}, uuids);
+	}
+	
+	@Test
+	public void testDeleteFirstEntry() throws Exception {
+		// given
+		recordsFile = new RecordsFile(fileName, initialSize);
+		
+		String smallEntry = UUID.randomUUID().toString();
+		String largeEntry = UUID.randomUUID().toString()+UUID.randomUUID().toString()+UUID.randomUUID().toString();
+		
+		RecordWriter smallWriter1 = new RecordWriter("small");
+		smallWriter1.writeObject(smallEntry);
+		RecordWriter smallWriter2 = new RecordWriter("small2");
+		smallWriter2.writeObject(smallEntry);
+		RecordWriter largeWriter = new RecordWriter("large");
+		largeWriter.writeObject(largeEntry);
+		
+		// when
+		recordsFile.insertRecord(smallWriter1);
+		recordsFile.insertRecord(smallWriter2); // expansion reorders first couple of entries so try three
+		recordsFile.insertRecord(largeWriter);
+		recordsFile.deleteRecord("small");
+		recordsFile.deleteRecord("small2");
+		String large = (String) recordsFile.readRecord("large").readObject();
+		
+		Assert.assertThat(large, is(largeEntry));
+	}
+	
+	@Test
+	public void testDeleteFirstEntryWithIOExceptions() throws Exception {
+		List<UUID> uuids = createUuid(4);
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+				String smallEntry = uuids.get(0).toString();
+				String largeEntry = uuids.get(1).toString()+uuids.get(1).toString()+uuids.get(3).toString();
+				RecordWriter smallWriter1 = new RecordWriter("small");
+				smallWriter1.writeObject(smallEntry);
+				RecordWriter smallWriter2 = new RecordWriter("small2");
+				smallWriter2.writeObject(smallEntry);
+				RecordWriter largeWriter = new RecordWriter("large");
+				largeWriter.writeObject(largeEntry);
+				
+				// when
+				recordsFile.insertRecord(smallWriter1);
+				recordsFile.insertRecord(smallWriter2); // expansion reorders first couple of entries so try three
+				recordsFile.insertRecord(largeWriter);
+				recordsFile.deleteRecord("small");
+				recordsFile.deleteRecord("small2");
+				String large = (String) recordsFile.readRecord("large").readObject();
+				Assert.assertThat(large, is(largeEntry));
+			}
 		}, uuids);
 	}
 	

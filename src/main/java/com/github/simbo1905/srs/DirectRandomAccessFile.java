@@ -1,4 +1,4 @@
-package com.github.simbo1905.chronicle.db;
+package com.github.simbo1905.srs;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -8,7 +8,7 @@ import java.nio.channels.FileChannel;
 /**
  * easier to mock final native class by wrapping it in an interface
  */
-final public class DirectRandomAccessFile implements IRandomAccessFile {
+final public class DirectRandomAccessFile implements RandomAccessFileInterface {
 
 	final private RandomAccessFile randomAccessFile;
 

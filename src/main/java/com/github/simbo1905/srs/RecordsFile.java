@@ -1,4 +1,4 @@
-package com.github.simbo1905.chronicle.db;
+package com.github.simbo1905.srs;
 
 import static java.lang.System.err;
 import static java.lang.System.out;
@@ -6,10 +6,9 @@ import static java.lang.System.out;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 
-public class RecordsFile extends BaseRecordsFile {
+public class RecordsFile extends BaseRecordsStore {
 
 	/**
 	 * Hashtable which holds the in-memory index. For efficiency, the entire
@@ -45,14 +44,6 @@ public class RecordsFile extends BaseRecordsFile {
 			header.setIndexPosition(i);
 			memIndex.put(key, header);
 		}
-	}
-
-	/**
-	 * Returns an enumeration of all the keys in the database.
-	 */
-	@Override
-	public synchronized Iterator<String> enumerateKeys() {
-		return memIndex.keySet().iterator();
 	}
 
 	@Override

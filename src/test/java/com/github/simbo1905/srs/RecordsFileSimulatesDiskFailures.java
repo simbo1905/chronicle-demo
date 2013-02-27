@@ -1,8 +1,11 @@
-package com.github.simbo1905.chronicle.db;
+package com.github.simbo1905.srs;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+
+import com.github.simbo1905.srs.RecordsFile;
+import com.github.simbo1905.srs.RecordsFileException;
 
 public class RecordsFileSimulatesDiskFailures extends RecordsFile {
 

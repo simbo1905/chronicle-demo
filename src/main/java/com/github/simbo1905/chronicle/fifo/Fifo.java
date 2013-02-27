@@ -57,7 +57,6 @@ public class Fifo<T> {
 		
 		@Override
 		public void close() throws IOException {
-			dataStore.close();
 			this.fileLock.release();
 		}
 
@@ -130,7 +129,6 @@ public class Fifo<T> {
 		
 		@Override
 		public void close() {
-			dataStore.close();
 	        disruptor.shutdown();
 	        executor.shutdown();
 		}

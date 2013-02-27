@@ -1,11 +1,13 @@
-package com.github.simbo1905.chronicle.db;
+package com.github.simbo1905.srs;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 
-public final class InterceptedRandomAccessFile implements IRandomAccessFile {
+import com.github.simbo1905.srs.RandomAccessFileInterface;
+
+public final class InterceptedRandomAccessFile implements RandomAccessFileInterface {
 	final private RandomAccessFile file;
 	final private WriteCallback wc;
 

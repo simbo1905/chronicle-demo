@@ -1,11 +1,14 @@
 package com.github.simbo1905.srs;
 
+import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.ArrayList;
+import java.util.List;
 
-public abstract class BaseRecordsStore {
+public abstract class BaseRecordStore {
 
 	/*default*/ RandomAccessFileInterface file;
 
@@ -36,7 +39,7 @@ public abstract class BaseRecordsStore {
 	 * Creates a new database file, initializing the appropriate headers. Enough
 	 * space is allocated in the index for the specified initial size.
 	 */
-	protected BaseRecordsStore(String dbPath, int initialSize)
+	protected BaseRecordStore(String dbPath, int initialSize)
 			throws IOException, RecordsFileException {
 		File f = new File(dbPath);
 		if (f.exists()) {
@@ -55,7 +58,7 @@ public abstract class BaseRecordsStore {
 	 * accessFlags parameter can be "r" or "rw" -- as defined in
 	 * RandomAccessFile.
 	 */
-	protected BaseRecordsStore(String dbPath, String accessFlags)
+	protected BaseRecordStore(String dbPath, String accessFlags)
 			throws IOException, RecordsFileException {
 		File f = new File(dbPath);
 		if (!f.exists()) {
@@ -97,7 +100,7 @@ public abstract class BaseRecordsStore {
 	 * Returns the record to which the target file pointer belongs - meaning the
 	 * specified location in the file is part of the record data of the
 	 * RecordHeader which is returned. Returns null if the location is not part
-	 * of a record. (O(n) mem accesses)
+	 * of a record. 
 	 */
 	protected abstract RecordHeader getRecordAt(long targetFp)
 			throws RecordsFileException;
@@ -408,6 +411,21 @@ public abstract class BaseRecordsStore {
 			file.close();
 		} finally {
 			file = null;
+		}
+	}
+
+	public void insertRecords(RecordWriter... writers) throws Exception {
+		insureIndexSpace(getNumRecords() + writers.length);
+		for( RecordWriter rw : writers ){
+			String key = rw.getKey();
+			if (recordExists(key)) {
+				throw new RecordsFileException("Key exists: " + key);
+			}
+			long fp = getFileLength();
+			setFileLength(fp + rw.getDataLength());
+			RecordHeader newRecord = new RecordHeader(fp, rw.getDataLength());
+			writeRecordData(newRecord, rw);
+			addEntryToIndex(key, newRecord, getNumRecords());
 		}
 	}
 

@@ -1,6 +1,7 @@
 package com.github.simbo1905.srs;
 
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThan;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 
@@ -16,12 +17,6 @@ import java.util.logging.Logger;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
-
-import com.github.simbo1905.srs.RecordHeader;
-import com.github.simbo1905.srs.RecordReader;
-import com.github.simbo1905.srs.RecordWriter;
-import com.github.simbo1905.srs.RecordsFile;
-import com.github.simbo1905.srs.RecordsFileException;
 
 /**
  * Tests that the simple random access storage 'db' works and does not get 
@@ -98,7 +93,7 @@ public class SimpleRecordsStoreTests {
 		db.deleteOnExit();
 	}
 	
-	RecordsFile recordsFile = null;
+	BaseRecordStore recordsFile = null;
 	
 	@After
 	public void deleteDb() throws Exception {
@@ -113,7 +108,7 @@ public class SimpleRecordsStoreTests {
 	 */
 	@Test
 	public void originalTest() throws Exception {
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		
 		LOGGER.info("creating records file...");
 
@@ -151,7 +146,7 @@ public class SimpleRecordsStoreTests {
 	@Test
 	public void testInsertOneRecord() throws Exception {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		List<UUID> uuids = createUuid(1);
 		Object uuid = uuids.get(0);
 		RecordWriter rw = new RecordWriter(uuid.toString());
@@ -191,7 +186,7 @@ public class SimpleRecordsStoreTests {
 	@Test
 	public void testInsertTwoRecords() throws Exception {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		List<UUID> uuids = createUuid(2);
 		Object uuid0 = uuids.get(0);
 		RecordWriter rw0 = new RecordWriter(uuid0.toString());
@@ -237,7 +232,7 @@ public class SimpleRecordsStoreTests {
 	@Test
 	public void testInsertThenDeleteRecord() throws Exception {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		List<UUID> uuids = createUuid(1);
 		Object uuid0 = uuids.get(0);
 		RecordWriter rw0 = new RecordWriter(uuid0.toString());
@@ -278,7 +273,7 @@ public class SimpleRecordsStoreTests {
 	@Test
 	public void testInsertTwoThenDeleteTwoRecords() throws Exception {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		List<UUID> uuids = createUuid(2);
 		Object uuid0 = uuids.get(0);
 		RecordWriter rw0 = new RecordWriter(uuid0.toString());
@@ -335,7 +330,7 @@ public class SimpleRecordsStoreTests {
 	@Test
 	public void testInsertTwoDeleteFirstInsertOne() throws Exception {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		List<UUID> uuids = createUuid(3);
 		
 		Object uuid0 = uuids.get(0);
@@ -407,7 +402,7 @@ public class SimpleRecordsStoreTests {
 	@Test
 	public void testInsertTwoDeleteSecondInsertOne() throws Exception {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		List<UUID> uuids = createUuid(3);
 		
 		Object uuid0 = uuids.get(0);
@@ -481,7 +476,7 @@ public class SimpleRecordsStoreTests {
 	public void testInsertThreeDeleteSecondInsertOne() throws Exception {
 		// given
 		List<UUID> uuids = createUuid(4);
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		
 		Object uuid0 = uuids.get(0);
 		RecordWriter rw0 = new RecordWriter(uuid0.toString());
@@ -573,7 +568,7 @@ public class SimpleRecordsStoreTests {
 	public void testUpdateOneRecord() throws Exception {
 		// given
 		List<UUID> uuids = createUuid(2);
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		
 		Object uuid0 = uuids.get(0);
 		RecordWriter rw0 = new RecordWriter(uuid0.toString());
@@ -622,7 +617,7 @@ public class SimpleRecordsStoreTests {
 	@Test
 	public void testUpdateExpandOneRecord() throws Exception {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		
 		UUID uuid0 = UUID.randomUUID();
 		UUID uuid1 = UUID.randomUUID();
@@ -679,7 +674,7 @@ public class SimpleRecordsStoreTests {
 	@Test
 	public void testUpdateShrinkOneRecord() throws Exception {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		
 		UUID uuid0 = UUID.randomUUID();
 		UUID uuid1 = UUID.randomUUID();
@@ -732,7 +727,7 @@ public class SimpleRecordsStoreTests {
 	@Test
 	public void testDeleteFirstEntry() throws Exception {
 		// given
-		recordsFile = new RecordsFile(fileName, initialSize);
+		recordsFile = new FileRecordStore(fileName, initialSize);
 		
 		String smallEntry = UUID.randomUUID().toString();
 		String largeEntry = UUID.randomUUID().toString()+UUID.randomUUID().toString()+UUID.randomUUID().toString();
@@ -782,6 +777,71 @@ public class SimpleRecordsStoreTests {
 				Assert.assertThat(large, is(largeEntry));
 			}
 		}, uuids);
+	}
+	
+	@Test
+	public void testBulkInsert() throws Exception {
+		// given
+		recordsFile = new FileRecordStore(fileName, initialSize);
+		
+		String smallEntry = UUID.randomUUID().toString();
+		String largeEntry = UUID.randomUUID().toString()+UUID.randomUUID().toString()+UUID.randomUUID().toString();
+		
+		RecordWriter smallWriter1 = new RecordWriter("small");
+		smallWriter1.writeObject(smallEntry);
+		RecordWriter smallWriter2 = new RecordWriter("small2");
+		smallWriter2.writeObject(smallEntry);
+		RecordWriter largeWriter = new RecordWriter("large");
+		largeWriter.writeObject(largeEntry);
+		
+		//recordsFile.insertRecord(smallWriter1);
+		
+		// when
+		recordsFile.insertRecords(smallWriter1,smallWriter2,largeWriter);
+		String small = (String) recordsFile.readRecord("small").readObject();
+		String small2 = (String) recordsFile.readRecord("small2").readObject();
+		String large = (String) recordsFile.readRecord("large").readObject();
+		
+		// then
+		
+		Assert.assertThat(small, is(smallEntry));
+		Assert.assertThat(small2, is(smallEntry));
+		Assert.assertThat(large, is(largeEntry));
+		
+		RecordHeader smallHeader = recordsFile.keyToRecordHeader("small");
+		RecordHeader small2Header = recordsFile.keyToRecordHeader("small2");
+		RecordHeader largeHeader = recordsFile.keyToRecordHeader("large");
+		Assert.assertThat( smallHeader.dataPointer, lessThan(small2Header.dataPointer));		
+		Assert.assertThat( small2Header.dataPointer, lessThan(largeHeader.dataPointer));		
+	}
+	
+	@Test
+	public void testBulkInsertWithIOExceptions() throws Exception {
+		verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+			@Override
+			public void performTestOperations(WriteCallback wc, String fileName,
+					List<UUID> uuids) throws Exception {
+				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+				
+				String smallEntry = UUID.randomUUID().toString();
+				String largeEntry = UUID.randomUUID().toString()+UUID.randomUUID().toString()+UUID.randomUUID().toString();
+				
+				RecordWriter smallWriter1 = new RecordWriter("small");
+				smallWriter1.writeObject(smallEntry);
+				RecordWriter smallWriter2 = new RecordWriter("small2");
+				smallWriter2.writeObject(smallEntry);
+				RecordWriter largeWriter = new RecordWriter("large");
+				largeWriter.writeObject(largeEntry);
+				
+				//recordsFile.insertRecord(smallWriter1);
+				
+				// when
+				recordsFile.insertRecords(smallWriter1,smallWriter2,largeWriter);
+				recordsFile.readRecord("small").readObject();
+				recordsFile.readRecord("small2").readObject();
+				recordsFile.readRecord("large").readObject();
+			}
+		}, null);
 	}
 	
 	private void removeFiles(List<String> localFileNames) {
@@ -839,7 +899,7 @@ public class SimpleRecordsStoreTests {
 				interceptedOperations.performTestOperations(crashAt, localFileName,uuids);
 			} catch( Exception ioe ) {
 				try {
-					RecordsFile possiblyCorruptedFile = new RecordsFile(localFileName, "r");
+					BaseRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r");
 					int count = possiblyCorruptedFile.getNumRecords();
 					for( String k : possiblyCorruptedFile.keys() ){
 						RecordReader r = possiblyCorruptedFile.readRecord(k);

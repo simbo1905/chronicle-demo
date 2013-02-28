@@ -8,7 +8,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-public class RecordsFile extends BaseRecordsStore {
+public class FileRecordStore extends BaseRecordStore {
 
 	/**
 	 * Hashtable which holds the in-memory index. For efficiency, the entire
@@ -22,7 +22,7 @@ public class RecordsFile extends BaseRecordsStore {
 	 * amount of space which is allocated for the index. The index can grow
 	 * dynamically, but the parameter is provide to increase efficiency.
 	 */
-	public RecordsFile(String dbPath, int initialSize) throws IOException,
+	public FileRecordStore(String dbPath, int initialSize) throws IOException,
 			RecordsFileException {
 		super(dbPath, initialSize);
 		memIndex = Collections
@@ -32,7 +32,7 @@ public class RecordsFile extends BaseRecordsStore {
 	/**
 	 * Opens an existing database and initializes the in-memory index.
 	 */
-	public RecordsFile(String dbPath, String accessFlags) throws IOException,
+	public FileRecordStore(String dbPath, String accessFlags) throws IOException,
 			RecordsFileException {
 		super(dbPath, accessFlags);
 		int numRecords = readNumRecordsHeader();
@@ -173,7 +173,7 @@ public class RecordsFile extends BaseRecordsStore {
 		}
 		final String filename = args[0];
 		out.println("Reading from "+filename);
-		final RecordsFile recordFile = new RecordsFile(filename, "r");
+		final BaseRecordStore recordFile = new FileRecordStore(filename, "r");
 		out.println(String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), recordFile.getFileLength(), recordFile.dataStartPtr));
 		for(int index = 0; index < recordFile.getNumRecords(); index++ ){
 			final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
